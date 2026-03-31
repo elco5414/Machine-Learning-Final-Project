@@ -1,0 +1,9 @@
+numpy>=2.0.0
+pandas>=2.2.2
+yfinance>=0.2.51
+pandas_ta>=0.4.71b0
+scikit-learn>=1.4.2
+torch>=2.3.0
+tqdm>=4.66.4
+pyarrow>=16.1.0
+requests>=2.32.3
