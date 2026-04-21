@@ -9,6 +9,7 @@
 
 [Hosted Application Link](https://huggingface.co/spaces/elco5414/portfolio-prediction)
 
+- the blurb below is needed for hugging face set-up just ignore. 
 ---
 title: Market Terminal
 emoji: 📊
