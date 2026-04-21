@@ -21,6 +21,17 @@ very specific commands i had to use unfortunately
 - `./venv/bin/python -m pip install -r requirements.txt`
 - `./venv/bin/python data_pipeline.py`
 
+---
+title: Market Terminal
+emoji: 📈
+colorFrom: gray
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # Stock Market Prediction on the S&P 500
 
 A final project exploring two complementary approaches to forecasting U.S. equities, served through a single web interface.
