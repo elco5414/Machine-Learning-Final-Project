@@ -3,6 +3,8 @@
 - Mariana Vadas-Arendt
 - Elizabeth Coleman
 
+https://huggingface.co/spaces/elco5414/portfolio-prediction
+
 **Premise**
 This model helps lower the financial barrier for users to trading and investment. Many people do not have the capital to risk whilst learning the ebs and flows of trading which this will help resolve. This project allows users to experiement without assuming the same kinds of risk. 
 
