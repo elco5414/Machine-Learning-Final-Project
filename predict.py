@@ -4,19 +4,8 @@ predict.py
 Loads the trained price model and predicts a stock's closing price on a
 given future date.
 
-Example:
-    from predict import predict_price
-    result = predict_price("AAPL", "2026-06-01")
-    print(result)
-    # {
-    #   "ticker": "AAPL",
-    #   "as_of": "2026-04-21",
-    #   "target_date": "2026-06-01",
-    #   "days_ahead": 29,
-    #   "current_price": 172.43,
-    #   "predicted_price": 178.12,
-    #   "predicted_return_pct": 3.30,
-    # }
+Exposes predict_price(ticker, future_date) for programmatic use by the API.
+Run directly for a quick demo.
 """
 
 import json
@@ -52,12 +41,16 @@ def _load_model():
 
     _model = xgb.XGBRegressor()
     _model.load_model(model_path)
+    # Force single-threaded inference: XGBoost's OpenMP runtime collides
+    # with PyTorch's bundled libomp on Mac, causing a segfault when both
+    # are loaded in the same process. Single-threaded inference avoids
+    # the thread pool entirely. Plenty fast for one prediction at a time.
+    _model.set_params(n_jobs=1)
     with open(features_path) as f:
         _feature_cols = json.load(f)
     return _model, _feature_cols
 
 
-# -------- feature construction for a single prediction --------
 def _build_features_for_prediction(ticker, days_ahead):
     """Fetch recent price history for `ticker` and build the latest feature row.
 
@@ -65,8 +58,6 @@ def _build_features_for_prediction(ticker, days_ahead):
     between training features and prediction features silently corrupts
     results, so changes must be made in both places.
     """
-    # need ~1 year of history to compute the longest rolling window (63d)
-    # and some buffer for weekends/holidays
     df = yf.download(
         ticker,
         period="1y",
@@ -76,7 +67,6 @@ def _build_features_for_prediction(ticker, days_ahead):
     if df.empty:
         raise ValueError(f"No price data returned for ticker {ticker!r}.")
 
-    # yfinance sometimes returns a multiindex column frame; flatten it
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
@@ -108,12 +98,10 @@ def _build_features_for_prediction(ticker, days_ahead):
 
 
 def _business_days_between(start, end):
-    """Count trading days (Mon-Fri, ignoring holidays for simplicity)
-    between two dates. Good enough for horizon calculation."""
+    """Count trading days (Mon-Fri, ignoring holidays) between two dates."""
     return int(np.busday_count(start.date(), end.date()))
 
 
-# -------- public API --------
 def predict_price(ticker, future_date):
     """Predict the closing price of `ticker` on `future_date`.
 
@@ -124,14 +112,9 @@ def predict_price(ticker, future_date):
     Returns:
         dict with keys: ticker, as_of, target_date, days_ahead,
         current_price, predicted_price, predicted_return_pct.
-
-    Raises:
-        ValueError: if the target date is in the past or beyond MAX_HORIZON
-            trading days, or if yfinance returns no data.
     """
     model, feature_cols = _load_model()
 
-    # normalize future_date
     if isinstance(future_date, str):
         target = pd.Timestamp(future_date)
     else:
@@ -173,7 +156,6 @@ def predict_price(ticker, future_date):
 
 
 if __name__ == "__main__":
-    # quick demo
     import pprint
 
     demo_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")

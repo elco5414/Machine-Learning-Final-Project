@@ -41,7 +41,7 @@ END_DATE = None  # None = today
 MAX_HORIZON = 90  # days ahead
 HORIZONS = [1, 5, 10, 21, 42, 63, 90]  # training horizons sampled per row
 TEST_SPLIT_DATE = "2024-01-01"  # chronological split
-MODEL_DIR = "models/price_model"
+MODEL_DIR = "models/"
 RANDOM_SEED = 42
 
 FEATURE_COLS = [
