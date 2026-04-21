@@ -1,0 +1,20 @@
+{
+  "trained_at": "2026-04-21T07:55:34.068426+00:00",
+  "start_date": "2015-01-01",
+  "end_date": "today",
+  "test_split_date": "2024-01-01",
+  "max_horizon": 90,
+  "horizons_trained": [
+    1,
+    5,
+    10,
+    21,
+    42,
+    63,
+    90
+  ],
+  "metrics": {
+    "test_mae": 0.0708918968942179,
+    "test_r2": 0.026108534837388953
+  }
+}

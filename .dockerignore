@@ -1,0 +1,30 @@
+# Virtual environments -- not needed in container
+venv/
+.venv/
+env/
+
+# Cached training data (will be regenerated if needed; large)
+data/
+*.parquet
+
+# Local caches
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Git
+.git/
+.gitignore
+
+# Docs / secrets
+*.log
+.env
+.env.*

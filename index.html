@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Market Terminal</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                /* modern fintech dark -- Linear/Stripe dashboard feel.
+       Variable names preserved from the light theme so the rest of the
+       stylesheet can stay untouched; only the values here change.   */
+                --ink: #e8e9ec; /* primary text                    */
+                --ink-soft: #c7c9cf; /* secondary text                  */
+                --ink-mute: #8b8e96; /* muted labels, captions          */
+                --ink-fade: #5d6067; /* faded / disabled                */
+                --rule: #24272d; /* primary divider                 */
+                --rule-soft: #1b1d22; /* hairline divider, row separator */
+                --paper: #0e1014; /* page background                 */
+                --paper-alt: #15181d; /* slightly raised surface         */
+                --pos: #4ade80; /* positive return                 */
+                --neg: #f87171; /* negative return                 */
+                --serif: "Fraunces", "Times New Roman", serif;
+                --sans:
+                    "IBM Plex Sans", -apple-system, BlinkMacSystemFont,
+                    sans-serif;
+                --mono: "IBM Plex Mono", "SF Mono", Menlo, monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            body {
+                background: var(--paper);
+                color: var(--ink);
+                font-family: var(--sans);
+                font-size: 14px;
+                line-height: 1.55;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+
+            /* --- header --- */
+            header {
+                border-bottom: 1px solid var(--rule);
+                padding: 28px 48px 22px;
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                gap: 24px;
+            }
+            .masthead h1 {
+                font-family: var(--serif);
+                font-weight: 500;
+                font-size: 34px;
+                letter-spacing: -0.02em;
+                margin: 0;
+                line-height: 1;
+            }
+            .masthead h1 em {
+                font-style: italic;
+                font-weight: 300;
+            }
+            .masthead .tagline {
+                font-family: var(--mono);
+                font-size: 11px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: var(--ink-mute);
+                margin-top: 6px;
+            }
+            .meta {
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--ink-mute);
+                text-align: right;
+                letter-spacing: 0.04em;
+            }
+            .meta .status-dot {
+                display: inline-block;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--pos);
+                margin-right: 6px;
+                vertical-align: middle;
+            }
+
+            /* --- layout --- */
+            main {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 0;
+                min-height: calc(100vh - 90px);
+            }
+            .panel {
+                padding: 40px 48px 56px;
+            }
+            .panel + .panel {
+                border-left: 1px solid var(--rule);
+            }
+            @media (max-width: 960px) {
+                main {
+                    grid-template-columns: 1fr;
+                }
+                .panel + .panel {
+                    border-left: none;
+                    border-top: 1px solid var(--rule);
+                }
+                header {
+                    padding: 22px 24px 18px;
+                }
+                .panel {
+                    padding: 32px 24px 44px;
+                }
+            }
+
+            .panel-kicker {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: var(--ink-mute);
+                margin-bottom: 10px;
+            }
+            .panel h2 {
+                font-family: var(--serif);
+                font-weight: 500;
+                font-size: 26px;
+                letter-spacing: -0.015em;
+                margin: 0 0 4px;
+                line-height: 1.15;
+            }
+            .panel .subhead {
+                color: var(--ink-mute);
+                font-size: 13px;
+                margin-bottom: 28px;
+            }
+
+            /* --- forms --- */
+            label {
+                display: block;
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--ink-mute);
+                margin-bottom: 6px;
+            }
+            input[type="text"],
+            input[type="number"],
+            input[type="date"],
+            select {
+                width: 100%;
+                padding: 9px 0;
+                border: none;
+                border-bottom: 1px solid var(--rule);
+                background: transparent;
+                font-family: var(--sans);
+                font-size: 15px;
+                color: var(--ink);
+                outline: none;
+                transition: border-color 120ms ease;
+                border-radius: 0;
+                color-scheme: dark; /* native calendar + select controls adopt dark chrome */
+            }
+            input:focus,
+            select:focus {
+                border-bottom-color: var(--ink);
+            }
+            input[type="number"] {
+                -moz-appearance: textfield;
+            }
+            input[type="number"]::-webkit-outer-spin-button,
+            input[type="number"]::-webkit-inner-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
+            }
+            input[type="text"]::placeholder,
+            input[type="number"]::placeholder {
+                color: var(--ink-fade);
+            }
+            /* native date picker icon is black-on-black by default; invert it */
+            input[type="date"]::-webkit-calendar-picker-indicator {
+                filter: invert(0.7);
+                cursor: pointer;
+            }
+            /* select options in the dropdown menu need explicit colors */
+            select option {
+                background: var(--paper-alt);
+                color: var(--ink);
+            }
+
+            .input-row {
+                display: grid;
+                grid-template-columns: 2fr 1fr auto;
+                gap: 16px;
+                align-items: end;
+                margin-bottom: 24px;
+            }
+            .input-row-2 {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 24px;
+                margin-bottom: 28px;
+            }
+
+            button {
+                font-family: var(--mono);
+                font-size: 11px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                padding: 10px 18px;
+                background: var(--ink);
+                color: var(--paper);
+                border: 1px solid var(--ink);
+                cursor: pointer;
+                transition: all 120ms ease;
+                white-space: nowrap;
+            }
+            button:hover:not(:disabled) {
+                background: var(--ink-soft);
+                border-color: var(--ink-soft);
+            }
+            button:disabled {
+                opacity: 0.35;
+                cursor: not-allowed;
+            }
+            button.ghost {
+                background: transparent;
+                color: var(--ink);
+                border-color: var(--rule);
+            }
+            button.ghost:hover:not(:disabled) {
+                background: var(--paper-alt);
+                color: var(--ink);
+                border-color: var(--ink-mute);
+            }
+            .button-row {
+                display: flex;
+                gap: 12px;
+                margin-top: 8px;
+            }
+
+            /* --- portfolio table --- */
+            .holdings {
+                border-top: 1px solid var(--rule);
+                border-bottom: 1px solid var(--rule);
+                margin-bottom: 24px;
+                min-height: 60px;
+            }
+            .holdings .empty {
+                padding: 22px 0;
+                text-align: center;
+                color: var(--ink-fade);
+                font-style: italic;
+                font-family: var(--serif);
+                font-size: 14px;
+            }
+            .holding-row {
+                display: grid;
+                grid-template-columns: 1fr auto auto;
+                gap: 16px;
+                align-items: center;
+                padding: 12px 0;
+                border-bottom: 1px solid var(--rule-soft);
+            }
+            .holding-row:last-child {
+                border-bottom: none;
+            }
+            .holding-row .ticker {
+                font-family: var(--mono);
+                font-size: 14px;
+                letter-spacing: 0.03em;
+                font-weight: 500;
+            }
+            .holding-row .shares {
+                font-family: var(--mono);
+                color: var(--ink-mute);
+                font-size: 13px;
+            }
+            .remove-btn {
+                background: none;
+                border: none;
+                color: var(--ink-fade);
+                padding: 4px 6px;
+                font-size: 16px;
+                font-family: var(--serif);
+                cursor: pointer;
+                letter-spacing: 0;
+                text-transform: none;
+            }
+            .remove-btn:hover {
+                color: var(--neg);
+                background: transparent;
+            }
+
+            /* --- results --- */
+            .results {
+                margin-top: 28px;
+            }
+            .results-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                border-bottom: 1px solid var(--ink);
+                padding-bottom: 8px;
+                margin-bottom: 16px;
+            }
+            .results-header .label {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+            }
+            .results-header .horizon {
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--ink-mute);
+            }
+
+            .summary-card {
+                padding: 20px 0;
+                border-bottom: 1px solid var(--rule);
+                margin-bottom: 20px;
+            }
+            .summary-row {
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 24px;
+            }
+            .summary-cell .k {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--ink-mute);
+                margin-bottom: 6px;
+            }
+            .summary-cell .v {
+                font-family: var(--serif);
+                font-weight: 500;
+                font-size: 22px;
+                letter-spacing: -0.01em;
+                line-height: 1.1;
+            }
+            .summary-cell .v.mono {
+                font-family: var(--mono);
+                font-weight: 500;
+                font-size: 18px;
+            }
+
+            .result-row {
+                display: grid;
+                grid-template-columns: 60px 1fr 80px 90px 110px;
+                gap: 16px;
+                align-items: center;
+                padding: 11px 0;
+                border-bottom: 1px solid var(--rule-soft);
+                font-size: 13px;
+            }
+            .result-row .ticker {
+                font-family: var(--mono);
+                font-weight: 500;
+                letter-spacing: 0.03em;
+            }
+            .result-row .num {
+                font-family: var(--mono);
+                text-align: right;
+            }
+            .result-row .pct {
+                font-family: var(--mono);
+                text-align: right;
+                font-weight: 500;
+            }
+            .result-row .rec {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                text-align: right;
+            }
+            .pos {
+                color: var(--pos);
+            }
+            .neg {
+                color: var(--neg);
+            }
+
+            /* --- forecaster output --- */
+            .forecast-card {
+                margin-top: 36px;
+                padding: 28px 0 4px;
+                border-top: 1px solid var(--ink);
+                display: none;
+            }
+            .forecast-card.visible {
+                display: block;
+            }
+            .forecast-hero {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 32px;
+                align-items: end;
+                margin-bottom: 24px;
+            }
+            .hero-cell .k {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: var(--ink-mute);
+                margin-bottom: 8px;
+            }
+            .hero-cell .v {
+                font-family: var(--serif);
+                font-weight: 300;
+                font-size: 44px;
+                letter-spacing: -0.03em;
+                line-height: 1;
+            }
+            .hero-cell .v .cents {
+                font-size: 28px;
+                color: var(--ink-mute);
+            }
+            .forecast-meta {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+                padding-top: 18px;
+                border-top: 1px solid var(--rule-soft);
+            }
+            .meta-cell .k {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--ink-mute);
+                margin-bottom: 4px;
+            }
+            .meta-cell .v {
+                font-family: var(--mono);
+                font-size: 14px;
+                font-weight: 500;
+            }
+
+            /* --- misc --- */
+            .error {
+                margin-top: 16px;
+                padding: 10px 14px;
+                background: transparent;
+                border-left: 2px solid var(--neg);
+                color: var(--neg);
+                font-size: 13px;
+                font-family: var(--sans);
+            }
+            .loading {
+                display: inline-block;
+                width: 10px;
+                height: 10px;
+                border: 1.5px solid var(--ink);
+                border-top-color: transparent;
+                border-radius: 50%;
+                animation: spin 700ms linear infinite;
+                vertical-align: -2px;
+                margin-right: 8px;
+            }
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            /* footer note */
+            footer {
+                padding: 18px 48px;
+                border-top: 1px solid var(--rule);
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.08em;
+                color: var(--ink-fade);
+                text-transform: uppercase;
+                display: flex;
+                justify-content: space-between;
+            }
+            @media (max-width: 960px) {
+                footer {
+                    padding: 14px 24px;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div class="masthead">
+                <h1>Market <em>Terminal</em></h1>
+                <div class="tagline">
+                    S&amp;P 500 · Forecast &amp; Portfolio Analysis
+                </div>
+            </div>
+            <div class="meta">
+                <div><span class="status-dot"></span>System online</div>
+                <div id="date-line"></div>
+            </div>
+        </header>
+
+        <main>
+            <!-- ============ LEFT: PORTFOLIO ANALYZER ============ -->
+            <section class="panel">
+                <div class="panel-kicker">Model I · LSTM</div>
+                <h2>Portfolio Analyzer</h2>
+                <p class="subhead">
+                    Forecasts the expected return of each holding over the next
+                    five trading days.
+                </p>
+
+                <div class="input-row">
+                    <div>
+                        <label for="port-ticker">Ticker</label>
+                        <input
+                            type="text"
+                            id="port-ticker"
+                            placeholder="AAPL"
+                            autocomplete="off"
+                        />
+                    </div>
+                    <div>
+                        <label for="port-shares">Shares</label>
+                        <input
+                            type="number"
+                            id="port-shares"
+                            placeholder="10"
+                            min="1"
+                        />
+                    </div>
+                    <div>
+                        <button type="button" class="ghost" id="add-holding">
+                            Add
+                        </button>
+                    </div>
+                </div>
+
+                <div class="holdings" id="holdings">
+                    <div class="empty">
+                        No holdings yet — add a ticker to begin.
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button type="button" id="analyze-btn" disabled>
+                        Analyze portfolio
+                    </button>
+                    <button type="button" class="ghost" id="clear-btn" disabled>
+                        Clear
+                    </button>
+                </div>
+
+                <div id="port-error"></div>
+
+                <div class="results" id="port-results" style="display: none">
+                    <div class="results-header">
+                        <span class="label">Forecast</span>
+                        <span class="horizon">5 trading days</span>
+                    </div>
+                    <div class="summary-card" id="summary-card"></div>
+                    <div id="result-rows"></div>
+                </div>
+            </section>
+
+            <!-- ============ RIGHT: PRICE FORECASTER ============ -->
+            <section class="panel">
+                <div class="panel-kicker">Model II · XGBoost</div>
+                <h2>Price Forecaster</h2>
+                <p class="subhead">
+                    Projects the closing price of a single stock on any trading
+                    day within the next ninety days.
+                </p>
+
+                <div class="input-row-2">
+                    <div>
+                        <label for="fc-ticker">Ticker</label>
+                        <select id="fc-ticker">
+                            <option value="">Loading tickers…</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="fc-date">Target date</label>
+                        <input type="date" id="fc-date" />
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button type="button" id="forecast-btn">
+                        Generate forecast
+                    </button>
+                </div>
+
+                <div id="fc-error"></div>
+
+                <div class="forecast-card" id="forecast-card">
+                    <div class="forecast-hero">
+                        <div class="hero-cell">
+                            <div class="k">Current</div>
+                            <div class="v" id="fc-current">—</div>
+                        </div>
+                        <div class="hero-cell">
+                            <div class="k">Projected</div>
+                            <div class="v" id="fc-projected">—</div>
+                        </div>
+                    </div>
+                    <div class="forecast-meta">
+                        <div class="meta-cell">
+                            <div class="k">Change</div>
+                            <div class="v" id="fc-change">—</div>
+                        </div>
+                        <div class="meta-cell">
+                            <div class="k">Horizon</div>
+                            <div class="v" id="fc-horizon">—</div>
+                        </div>
+                        <div class="meta-cell">
+                            <div class="k">As of</div>
+                            <div class="v" id="fc-asof">—</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div>For academic use only · Not investment advice</div>
+            <div id="build-tag">v2.0</div>
+        </footer>
+
+        <script>
+            const API_BASE = ""; // same origin — frontend served from FastAPI
+
+            // --- header date ---
+            const now = new Date();
+            document.getElementById("date-line").textContent =
+                now.toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                });
+
+            // ===================================================
+            //   PORTFOLIO ANALYZER
+            // ===================================================
+            const holdings = {}; // { TICKER: shares }
+            const $holdings = document.getElementById("holdings");
+            const $analyze = document.getElementById("analyze-btn");
+            const $clear = document.getElementById("clear-btn");
+            const $portError = document.getElementById("port-error");
+            const $portResults = document.getElementById("port-results");
+
+            function renderHoldings() {
+                const entries = Object.entries(holdings);
+                if (entries.length === 0) {
+                    $holdings.innerHTML = `<div class="empty">No holdings yet — add a ticker to begin.</div>`;
+                    $analyze.disabled = true;
+                    $clear.disabled = true;
+                    return;
+                }
+                $holdings.innerHTML = entries
+                    .map(
+                        ([t, s]) => `
+        <div class="holding-row">
+          <div class="ticker">${t}</div>
+          <div class="shares">${s} ${s === 1 ? "share" : "shares"}</div>
+          <button class="remove-btn" data-ticker="${t}" title="Remove">×</button>
+        </div>
+      `,
+                    )
+                    .join("");
+                $analyze.disabled = false;
+                $clear.disabled = false;
+                $holdings.querySelectorAll(".remove-btn").forEach((btn) => {
+                    btn.addEventListener("click", () => {
+                        delete holdings[btn.dataset.ticker];
+                        renderHoldings();
+                    });
+                });
+            }
+
+            document
+                .getElementById("add-holding")
+                .addEventListener("click", () => {
+                    const ticker = document
+                        .getElementById("port-ticker")
+                        .value.trim()
+                        .toUpperCase();
+                    const shares = parseInt(
+                        document.getElementById("port-shares").value,
+                        10,
+                    );
+                    if (!ticker || !shares || shares < 1) {
+                        showPortError("Enter a ticker and a share count.");
+                        return;
+                    }
+                    if (!tickersLoaded) {
+                        showPortError(
+                            "Still loading ticker list — try again in a moment.",
+                        );
+                        return;
+                    }
+                    if (!validTickers.has(ticker)) {
+                        showPortError(
+                            `"${ticker}" is not in the S&P 500. Use the ticker symbol (e.g. AAPL, MSFT, BRK-B).`,
+                        );
+                        return;
+                    }
+                    holdings[ticker] = (holdings[ticker] || 0) + shares;
+                    document.getElementById("port-ticker").value = "";
+                    document.getElementById("port-shares").value = "";
+                    document.getElementById("port-ticker").focus();
+                    clearPortError();
+                    renderHoldings();
+                });
+
+            $clear.addEventListener("click", () => {
+                Object.keys(holdings).forEach((k) => delete holdings[k]);
+                $portResults.style.display = "none";
+                clearPortError();
+                renderHoldings();
+            });
+
+            $analyze.addEventListener("click", async () => {
+                clearPortError();
+                $analyze.innerHTML = `<span class="loading"></span>Analyzing…`;
+                $analyze.disabled = true;
+                try {
+                    const res = await fetch(API_BASE + "/portfolio", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ portfolio: holdings }),
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(
+                            err.detail || `Request failed (${res.status})`,
+                        );
+                    }
+                    renderPortfolioResults(await res.json());
+                } catch (e) {
+                    showPortError(e.message || "Something went wrong.");
+                } finally {
+                    $analyze.innerHTML = "Analyze portfolio";
+                    $analyze.disabled = false;
+                }
+            });
+
+            function renderPortfolioResults(data) {
+                const { portfolio, summary } = data;
+
+                // summary
+                const summaryHtml = `
+      <div class="summary-row">
+        <div class="summary-cell">
+          <div class="k">Total value</div>
+          <div class="v">$${fmt(summary.total_value)}</div>
+        </div>
+        <div class="summary-cell">
+          <div class="k">Weighted return</div>
+          <div class="v ${signClass(summary.weighted_return_pct)}">
+            ${fmtPct(summary.weighted_return_pct)}
+          </div>
+        </div>
+        <div class="summary-cell">
+          <div class="k">Projected change</div>
+          <div class="v mono ${signClass(summary.projected_dollar_change)}">
+            ${fmtSignedDollars(summary.projected_dollar_change)}
+          </div>
+        </div>
+      </div>
+    `;
+                document.getElementById("summary-card").innerHTML = summaryHtml;
+
+                // per-stock
+                const rows = Object.entries(portfolio)
+                    .map(([ticker, p]) => {
+                        if (
+                            p.predicted_return_pct === null ||
+                            p.predicted_return_pct === undefined
+                        ) {
+                            return `
+          <div class="result-row">
+            <div class="ticker">${ticker}</div>
+            <div class="num" style="color:var(--ink-fade);">${p.shares} sh</div>
+            <div class="num" style="color:var(--ink-fade);">—</div>
+            <div class="pct" style="color:var(--ink-fade);">—</div>
+            <div class="rec" style="color:var(--ink-fade);">no data</div>
+          </div>
+        `;
+                        }
+                        return `
+        <div class="result-row">
+          <div class="ticker">${ticker}</div>
+          <div class="num">${p.shares} sh</div>
+          <div class="num">$${fmt(p.position_value)}</div>
+          <div class="pct ${signClass(p.predicted_return_pct)}">
+            ${fmtPct(p.predicted_return_pct)}
+          </div>
+          <div class="rec ${signClass(p.predicted_return_pct)}">
+            ${p.recommendation}
+          </div>
+        </div>
+      `;
+                    })
+                    .join("");
+                document.getElementById("result-rows").innerHTML = rows;
+                $portResults.style.display = "block";
+            }
+
+            function showPortError(msg) {
+                $portError.innerHTML = `<div class="error">${msg}</div>`;
+            }
+            function clearPortError() {
+                $portError.innerHTML = "";
+            }
+
+            // ===================================================
+            //   PRICE FORECASTER
+            // ===================================================
+            const $fcTicker = document.getElementById("fc-ticker");
+            const $fcDate = document.getElementById("fc-date");
+            const $fcBtn = document.getElementById("forecast-btn");
+            const $fcError = document.getElementById("fc-error");
+            const $fcCard = document.getElementById("forecast-card");
+
+            // date input bounds: tomorrow to ~126 calendar days out (≈ 90 trading days)
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const maxDate = new Date();
+            maxDate.setDate(maxDate.getDate() + 126);
+            $fcDate.min = tomorrow.toISOString().slice(0, 10);
+            $fcDate.max = maxDate.toISOString().slice(0, 10);
+            // default: 30 days out
+            const defaultDate = new Date();
+            defaultDate.setDate(defaultDate.getDate() + 30);
+            $fcDate.value = defaultDate.toISOString().slice(0, 10);
+
+            // Shared set of valid S&P 500 tickers -- used by BOTH the forecaster
+            // dropdown AND the portfolio Add button for validation. Populated once
+            // at page load from /tickers.
+            const validTickers = new Set();
+            let tickersLoaded = false;
+
+            // load tickers
+            (async () => {
+                try {
+                    const res = await fetch(API_BASE + "/tickers");
+                    const { tickers } = await res.json();
+                    tickers.forEach((t) => validTickers.add(t));
+                    tickersLoaded = true;
+                    $fcTicker.innerHTML =
+                        `<option value="">Select a ticker…</option>` +
+                        tickers
+                            .map((t) => `<option value="${t}">${t}</option>`)
+                            .join("");
+                } catch {
+                    $fcTicker.innerHTML = `<option value="">Could not load tickers</option>`;
+                }
+            })();
+
+            $fcBtn.addEventListener("click", async () => {
+                clearFcError();
+                const ticker = $fcTicker.value;
+                const date = $fcDate.value;
+                if (!ticker) return showFcError("Pick a ticker.");
+                if (!date) return showFcError("Pick a date.");
+
+                $fcBtn.innerHTML = `<span class="loading"></span>Forecasting…`;
+                $fcBtn.disabled = true;
+                try {
+                    const res = await fetch(API_BASE + "/predict-price", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ticker, target_date: date }),
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(
+                            err.detail || `Request failed (${res.status})`,
+                        );
+                    }
+                    renderForecast(await res.json());
+                } catch (e) {
+                    showFcError(e.message || "Something went wrong.");
+                    $fcCard.classList.remove("visible");
+                } finally {
+                    $fcBtn.innerHTML = "Generate forecast";
+                    $fcBtn.disabled = false;
+                }
+            });
+
+            function renderForecast(d) {
+                document.getElementById("fc-current").innerHTML = splitPrice(
+                    d.current_price,
+                );
+                document.getElementById("fc-projected").innerHTML = splitPrice(
+                    d.predicted_price,
+                );
+
+                const chgEl = document.getElementById("fc-change");
+                chgEl.textContent = fmtPct(d.predicted_return_pct);
+                chgEl.className = "v " + signClass(d.predicted_return_pct);
+
+                document.getElementById("fc-horizon").textContent =
+                    `${d.days_ahead} trading day${d.days_ahead === 1 ? "" : "s"}`;
+                document.getElementById("fc-asof").textContent = d.as_of;
+
+                $fcCard.classList.add("visible");
+            }
+
+            function showFcError(msg) {
+                $fcError.innerHTML = `<div class="error">${msg}</div>`;
+            }
+            function clearFcError() {
+                $fcError.innerHTML = "";
+            }
+
+            // ===================================================
+            //   FORMATTING HELPERS
+            // ===================================================
+            function fmt(n) {
+                if (n === null || n === undefined) return "—";
+                return Number(n).toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                });
+            }
+            function fmtPct(n) {
+                if (n === null || n === undefined) return "—";
+                const sign = n > 0 ? "+" : "";
+                return `${sign}${Number(n).toFixed(2)}%`;
+            }
+            function fmtSignedDollars(n) {
+                if (n === null || n === undefined) return "—";
+                const sign = n > 0 ? "+" : n < 0 ? "−" : "";
+                return `${sign}$${fmt(Math.abs(n))}`;
+            }
+            function signClass(n) {
+                if (n === null || n === undefined || n === 0) return "";
+                return n > 0 ? "pos" : "neg";
+            }
+            function splitPrice(n) {
+                if (n === null || n === undefined) return "—";
+                const [whole, cents] = Number(n).toFixed(2).split(".");
+                const wholeFmt = Number(whole).toLocaleString("en-US");
+                return `$${wholeFmt}<span class="cents">.${cents}</span>`;
+            }
+        </script>
+    </body>
+</html>
