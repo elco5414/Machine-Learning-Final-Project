@@ -25,7 +25,6 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 # fetch S&P 500 companies
 def get_sp500_tickers() -> list[str]:
     """Scrape the current S&P 500 tickers from Wikipedia."""
-    print("Fetching S&P 500 tickers from Wikipedia...")
     url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers)
@@ -34,29 +33,28 @@ def get_sp500_tickers() -> list[str]:
     tables = pd.read_html(io.StringIO(response.text))
     df = tables[0]
     
-    # Make sure we got the right table
+    # Make sure we got the right table, was grabbing the wrong table :(
     if "Symbol" not in df.columns:
         raise ValueError(f"Unexpected table columns: {df.columns.tolist()}")
     
     tickers = df["Symbol"].tolist()
     tickers = [t.replace(".", "-") for t in tickers]
-    print(f"  Found {len(tickers)} tickers.\n")
     return tickers
 
 
 # download OHLCV data
 def download_ticker(ticker: str) -> pd.DataFrame | None:
-    """Download OHLCV data for a single company."""
+    """Download OHLCV data for a single ticker"""
     try:
         df = yf.download(
             ticker,
             start=START_DATE,
             end=END_DATE,
-            auto_adjust=True,   # adjusts for splits & dividends
+            auto_adjust=True, # adjusts for splits & dividends
             progress=False
         )
         if df.empty or len(df) < 100:
-            return None         # skip companies with insufficient data
+            return None # skip companies with insufficient data
         
         if isinstance(df.columns, pd.MultiIndex): # yfinance was returning ('Close', 'MMM') and we just want 'Close'
             df.columns = [col[0] for col in df.columns]
@@ -64,19 +62,17 @@ def download_ticker(ticker: str) -> pd.DataFrame | None:
         df["Ticker"] = ticker
         return df
     except Exception as e:
-        print(f"  Warning: failed to download {ticker} — {e}")
+        print(f"Warning: failed to download {ticker} — {e}")
         return None
 
 
 def download_all_tickers(tickers: list[str]) -> dict[str, pd.DataFrame]:
     """Download OHLCV data for all tickers."""
-    print("Downloading OHLCV data for all tickers...")
     data = {}
     for ticker in tqdm(tickers):
         df = download_ticker(ticker)
         if df is not None:
             data[ticker] = df
-    print(f"  Successfully downloaded {len(data)} tickers.\n")
     return data
 
 
@@ -121,7 +117,6 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     # --- Bollinger Bands ---
     bbands = ta.bbands(close, length=20)
     if bbands is not None:
-        # Dynamically find column names regardless of pandas_ta version
         upper_col = [c for c in bbands.columns if c.startswith("BBU")][0]
         mid_col   = [c for c in bbands.columns if c.startswith("BBM")][0]
         lower_col = [c for c in bbands.columns if c.startswith("BBL")][0]
@@ -140,7 +135,6 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# label data
 def label_data(df: pd.DataFrame, horizon: int = PREDICTION_HORIZON) -> pd.DataFrame:
     """
     Label each row with the actual % return N days into the future.
@@ -149,12 +143,11 @@ def label_data(df: pd.DataFrame, horizon: int = PREDICTION_HORIZON) -> pd.DataFr
     # close is the closing price, pct_change is the % change, the - makes it move backward so that this is the future of past 5 days ago
     df["label"] = df["Close"].pct_change(horizon).shift(-horizon)
 
-    df["action"] = 0  # 0=hold, 1=buy, 2=sell
+    df["action"] = 0  # 0 = hold, 1 = buy, 2 = sell
 
     return df
 
 
-# clean up data
 FEATURE_COLS = [
     "return_1d", "return_5d", "return_10d", "return_20d",
     "volatility_10d", "volatility_20d",
@@ -166,14 +159,14 @@ FEATURE_COLS = [
 ]
 
 def clean_and_normalize(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop NaN rows and clip extreme outliers."""
+    """Drop NaN rows and remove extreme outliers"""
     df = df.copy()
 
     # Drop rows where label or any feature is NaN
     cols_needed = FEATURE_COLS + ["label"]
-    df = df.dropna(subset=cols_needed)
+    df = df.dropna(subset = cols_needed)
 
-    # Clip extreme outliers (beyond 3 std) to reduce noise
+    # remove data beyond 3 std
     for col in FEATURE_COLS:
         if col == "action":
             continue
@@ -199,14 +192,13 @@ def process_and_save(ticker: str, raw_df: pd.DataFrame) -> bool:
         df[FEATURE_COLS + ["label", "Ticker"]].to_parquet(out_path)
         return True
     except Exception as e:
-        print(f"  Warning: failed to process {ticker} — {e}")
+        print(f"Warning: failed to process {ticker} — {e}")
         return False
 
 
 # combine all data into one for training
 def combine_all(processed_dir: str) -> pd.DataFrame:
-    """Combine all per-ticker Parquet files into one master DataFrame."""
-    print("\nCombining all processed files...")
+    """Combine all per-ticker Parquet files into one"""
     frames = []
     for fname in os.listdir(processed_dir):
         if fname.endswith(".parquet"):
@@ -218,22 +210,14 @@ def combine_all(processed_dir: str) -> pd.DataFrame:
     combined = pd.concat(frames, ignore_index=True)
     out_path  = os.path.join(OUTPUT_DIR, "training_data.parquet")
     combined.to_parquet(out_path)
-    print(f"  Combined dataset: {len(combined):,} rows")
-    print(f"  Saved to: {out_path}\n")
     return combined
 
 
-# main program
 def run_pipeline():
-    print("=" * 50)
-    print("  Stock Market Prediction — Data Pipeline")
-    print("=" * 50, "\n")
-
     tickers = get_sp500_tickers()
 
     raw_data = download_all_tickers(tickers)
 
-    print("Processing tickers (features + labels + cleaning)...")
     success, failed = 0, 0
     for ticker, df in tqdm(raw_data.items()):
         if process_and_save(ticker, df):
@@ -244,12 +228,9 @@ def run_pipeline():
 
     training_data = combine_all(PROCESSED_DIR)
 
-    print("Pipeline complete! Summary:")
-    print(f"  Total rows:     {len(training_data):,}")
-    print(f"  Total tickers:  {training_data['Ticker'].nunique()}")
-    print(f"  Features:       {len(FEATURE_COLS)}")
-    print(f"  Label:          % return over {PREDICTION_HORIZON} days")
-    print(f"  Output:         {OUTPUT_DIR}/training_data.parquet")
+    print("Done!")
+    print("Total rows: ", len(training_data))
+    print("Total tickers: ", training_data['Ticker'].nunique())
 
 
 if __name__ == "__main__":

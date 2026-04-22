@@ -1,11 +1,8 @@
 """
-Stock Market Prediction - FastAPI Backend
-==========================================
+Stock Market Prediction api
 Serves predictions from two models:
   1. LSTM model (5-day return + BUY/SELL/HOLD recommendations)
   2. XGBoost model (absolute price on a specific future date, up to 90 days)
-
-Also serves the static frontend at the root URL.
 
 Install dependencies:
     pip install fastapi uvicorn yfinance numpy torch pandas xgboost
@@ -16,9 +13,6 @@ Run:
 Then visit http://localhost:8000 in your browser.
 """
 
-# ─────────────────────────────────────────────
-# OPENMP WORKAROUND -- MUST BE FIRST
-# ─────────────────────────────────────────────
 # torch and xgboost each ship their own libomp.dylib on Mac.
 # Loading both in one process triggers an OpenMP duplicate-lib
 # abort that crashes the Python interpreter (segfault at
@@ -31,7 +25,6 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import io
 
-# our XGBoost price model
 # our XGBoost price model is invoked as a subprocess to avoid the torch +
 # xgboost OpenMP collision that crashes Python on Mac. MAX_HORIZON is still
 # imported from predict.py so the API can validate date ranges without
@@ -63,9 +56,7 @@ warnings.filterwarnings("ignore")
 # subprocess runner script.
 STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ─────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────
+# config
 MODEL_PATH = "models/model.pth"
 SCALER_PATH = "models/scaler.npy"
 
@@ -91,6 +82,7 @@ FEATURE_COLS = [
     "action",
 ]
 
+# S&P 500 companies
 WATCHLIST = [
     "AAPL",
     "MSFT",
@@ -133,10 +125,7 @@ WATCHLIST = [
     "RTX",
 ]
 
-
-# ─────────────────────────────────────────────
-# LSTM MODEL DEFINITION
-# ─────────────────────────────────────────────
+# lstm model
 class StockPredictor(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, dropout):
         super().__init__()
@@ -162,9 +151,6 @@ class StockPredictor(nn.Module):
         return out.squeeze(-1)
 
 
-# ─────────────────────────────────────────────
-# LOAD LSTM MODEL AT STARTUP
-# ─────────────────────────────────────────────
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint = torch.load(MODEL_PATH, map_location=device)
 config = checkpoint["config"]
@@ -175,6 +161,8 @@ lstm_model = StockPredictor(
     num_layers=config["num_layers"],
     dropout=config["dropout"],
 ).to(device)
+
+# load model
 lstm_model.load_state_dict(checkpoint["model_state"])
 lstm_model.eval()
 
@@ -182,14 +170,7 @@ scaler_data = np.load(SCALER_PATH, allow_pickle=True).item()
 scaler_mean = scaler_data["mean"]
 scaler_scale = scaler_data["scale"]
 
-print(f"✓ LSTM model loaded from {MODEL_PATH}")
-print(f"✓ Scaler loaded from {SCALER_PATH}")
-print(f"✓ Running on {device}")
 
-
-# ─────────────────────────────────────────────
-# TICKER LIST (for dropdown)
-# ─────────────────────────────────────────────
 _cached_tickers: Optional[list[str]] = None
 
 
@@ -212,9 +193,7 @@ def get_sp500_tickers() -> list[str]:
     return _cached_tickers
 
 
-# ─────────────────────────────────────────────
-# LSTM HELPER FUNCTIONS
-# ─────────────────────────────────────────────
+# helper functions
 def fetch_recent_data(ticker: str, days: int = 200) -> Optional[pd.DataFrame]:
     try:
         end = datetime.today()
@@ -312,9 +291,6 @@ def get_recommendation(predicted_return: float) -> str:
         return "Strong Sell"
 
 
-# ─────────────────────────────────────────────
-# FASTAPI APP
-# ─────────────────────────────────────────────
 app = FastAPI(
     title="Stock Market Predictor API",
     description="LSTM + XGBoost predictions on S&P 500 stocks",
@@ -330,9 +306,6 @@ app.add_middleware(
 )
 
 
-# ─────────────────────────────────────────────
-# REQUEST SCHEMAS
-# ─────────────────────────────────────────────
 class PortfolioRequest(BaseModel):
     portfolio: dict[str, int]  # { "AAPL": 10, "TSLA": 5 }
 
@@ -340,20 +313,6 @@ class PortfolioRequest(BaseModel):
 class PricePredictionRequest(BaseModel):
     ticker: str
     target_date: str  # "YYYY-MM-DD"
-
-
-# ─────────────────────────────────────────────
-# ENDPOINTS
-# ─────────────────────────────────────────────
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "lstm_model": MODEL_PATH,
-        "device": str(device),
-        "max_price_horizon_days": MAX_HORIZON,
-        "timestamp": datetime.now().isoformat(),
-    }
 
 
 @app.get("/tickers")
@@ -465,9 +424,40 @@ def predict_price_endpoint(request: PricePredictionRequest):
     return payload
 
 
-# ─────────────────────────────────────────────
-# SERVE STATIC FRONTEND
-# ─────────────────────────────────────────────
+@app.get("/suggestions")
+def get_suggestions(limit: int = 5):
+    """
+    Scan the watchlist and return the top performing predicted stocks
+    that could be good buys.
+    """
+    scored = []
+
+    for ticker in WATCHLIST:
+        pred = predict_return(ticker, action=1)
+        if pred is not None:
+            pct = pred["predicted_return_pct"]
+            scored.append({
+                "ticker":           ticker,
+                "predicted_return": f"{pct:+.2f}%",
+                "recommendation":   get_recommendation(pct),
+                "pred_value":       pct   # used for sorting, not returned
+            })
+
+    # Sort by predicted return descending
+    scored.sort(key=lambda x: x["pred_value"], reverse=True)
+
+    # Remove internal sorting field before returning
+    suggestions = []
+    for s in scored[:limit]:
+        s.pop("pred_value")
+        suggestions.append(s)
+
+    return {
+        "suggestions": suggestions,
+        "generated":   datetime.now().isoformat()
+    }
+
+
 # Assumes index.html sits next to this file. Served at the root URL.
 # (STATIC_DIR is defined near the top of the file.)
 

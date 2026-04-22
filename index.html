@@ -500,6 +500,42 @@
                     gap: 8px;
                 }
             }
+
+            /* --- suggestions --- */
+            .suggestions-panel {
+                border-top: 1px solid var(--rule);
+                padding: 40px 48px 56px;
+            }
+            .suggestions-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+                gap: 16px;
+                margin-top: 20px;
+            }
+            .suggestion-card {
+                border: 1px solid var(--rule);
+                padding: 16px;
+                background: var(--paper-alt);
+            }
+            .suggestion-card .s-ticker {
+                font-family: var(--mono);
+                font-weight: 500;
+                font-size: 15px;
+                letter-spacing: 0.03em;
+                margin-bottom: 6px;
+            }
+            .suggestion-card .s-return {
+                font-family: var(--mono);
+                font-size: 18px;
+                font-weight: 500;
+                margin-bottom: 8px;
+            }
+            .suggestion-card .s-rec {
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+            }
         </style>
     </head>
     <body>
@@ -636,6 +672,18 @@
                     </div>
                 </div>
             </section>
+        <!-- suggestions -->
+        <section class="suggestions-panel" style="grid-column: 1 / -1;">
+            <div class="panel-kicker">Model I · LSTM</div>
+            <h2>Market Suggestions</h2>
+            <p class="subhead">
+                Top predicted performers from the S&P 500 watchlist over the next 5 trading days.
+            </p>
+            <div class="button-row">
+                <button type="button" id="suggestions-btn">Scan market</button>
+            </div>
+            <div id="suggestions-error"></div>
+            <div id="suggestions-grid" class="suggestions-grid" style="display:none"></div>
         </main>
 
         <footer>
@@ -961,6 +1009,51 @@
                 const [whole, cents] = Number(n).toFixed(2).split(".");
                 const wholeFmt = Number(whole).toLocaleString("en-US");
                 return `$${wholeFmt}<span class="cents">.${cents}</span>`;
+            }
+
+            // suggestions
+            const $suggestionsBtn  = document.getElementById("suggestions-btn");
+            const $suggestionsGrid = document.getElementById("suggestions-grid");
+            const $suggestionsError = document.getElementById("suggestions-error");
+
+            $suggestionsBtn.addEventListener("click", async () => {
+                $suggestionsError.innerHTML = "";
+                $suggestionsBtn.innerHTML = `<span class="loading"></span>Scanning…`;
+                $suggestionsBtn.disabled = true;
+                $suggestionsGrid.style.display = "none";
+
+                try {
+                    const res  = await fetch(API_BASE + "/suggestions?limit=6");
+                    if (!res.ok) throw new Error(`Request failed (${res.status})`);
+                    const data = await res.json();
+                    renderSuggestions(data.suggestions);
+                    $suggestionsBtn.innerHTML = "Refresh";
+                } catch (e) {
+                    $suggestionsError.innerHTML = `<div class="error">${e.message || "Something went wrong."}</div>`;
+                    $suggestionsBtn.innerHTML = "Scan market";
+                } finally {
+                    $suggestionsBtn.disabled = false;
+                }
+            });
+
+            function renderSuggestions(suggestions) {
+                if (!suggestions.length) {
+                    $suggestionsGrid.innerHTML = `<div class="empty">No suggestions available.</div>`;
+                    $suggestionsGrid.style.display = "block";
+                    return;
+                }
+                $suggestionsGrid.innerHTML = suggestions.map(s => `
+                    <div class="suggestion-card">
+                        <div class="s-ticker">${s.ticker}</div>
+                        <div class="s-return ${signClass(parseFloat(s.predicted_return))}">
+                            ${s.predicted_return}
+                        </div>
+                        <div class="s-rec ${signClass(parseFloat(s.predicted_return))}">
+                            ${s.recommendation}
+                        </div>
+                    </div>
+                `).join("");
+                $suggestionsGrid.style.display = "grid";
             }
         </script>
     </body>

@@ -1,6 +1,6 @@
 """
 Trains an LSTM model on the processed S&P 500 data to predict
-the % return of a stock over the next 5 trading days.
+the % return of a stock over the next prediction_horizon trading days.
 """
 
 import os
@@ -17,22 +17,24 @@ from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
+PREDICTION_HORIZON = 20
 
 DATA_PATH = "data/training_data.parquet"
 MODEL_DIR = "models"
-MODEL_PATH = os.path.join(MODEL_DIR, "model.pth")
+MODEL_PATH = os.path.join(MODEL_DIR, "model_" + str(PREDICTION_HORIZON) + ".pth")
 SCALER_PATH = os.path.join(MODEL_DIR, "scaler.npy")
 
-SEQUENCE_LEN = 30  # How many past days the model looks at
+SEQUENCE_LEN = 60  # How many past days the model looks at
 BATCH_SIZE = 512  # How many samples per training step
-EPOCHS = 30  # How many times to train over the full dataset
-LEARNING_RATE = 0.001
+EPOCHS = 30  
+LEARNING_RATE = 0.001 
 HIDDEN_SIZE = 128  # Size of LSTM hidden layer
 NUM_LAYERS = 2  # Number of stacked LSTM layers
-DROPOUT = 0.2  # Dropout rate to prevent overfitting
-VAL_SPLIT = 0.1  # 10% of data used for validation
-TEST_SPLIT = 0.1  # 10% of data used for final testing
+DROPOUT = 0.2  
+VAL_SPLIT = 0.1 
+TEST_SPLIT = 0.1 
 
+# recommended features we found online
 FEATURE_COLS = [
     "return_1d",
     "return_5d",
@@ -57,31 +59,18 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 
 class StockDataset(Dataset):
-    """
-    PyTorch Dataset for stock sequences.
-
-    For each sample, instead of feeding just one row of features,
-    we feed a SEQUENCE of the last SEQUENCE_LEN days. This lets
-    the LSTM learn from the pattern of recent history, not just
-    a single snapshot.
-
-    Example:
-        SEQUENCE_LEN = 30
-        Input:  30 days of features  →  shape (30, 17)
-        Output: % return on day 31   →  shape (1,)
-    """
-
     def __init__(self, features: np.ndarray, labels: np.ndarray, seq_len: int):
         self.features = torch.tensor(features, dtype=torch.float32)
         self.labels = torch.tensor(labels, dtype=torch.float32)
         self.seq_len = seq_len
 
+    # how many valid samples in dataset
     def __len__(self):
         return len(self.features) - self.seq_len
 
     def __getitem__(self, idx):
-        x = self.features[idx : idx + self.seq_len]  # (seq_len, num_features)
-        y = self.labels[idx + self.seq_len]  # scalar
+        x = self.features[idx : idx + self.seq_len] 
+        y = self.labels[idx + self.seq_len] 
         return x, y
 
 
@@ -89,12 +78,7 @@ class StockPredictor(nn.Module):
     """
     LSTM-based stock return predictor.
 
-    Architecture:
-        Input  →  LSTM layers  →  Dropout  →  Linear  →  Predicted % return
-
-    The LSTM processes the sequence of past days and the final
-    hidden state is passed through a linear layer to produce
-    the predicted return.
+    The LSTM processes the sequence of past days and it produces the predicted return.
     """
 
     def __init__(
@@ -107,7 +91,7 @@ class StockPredictor(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_layers,
             dropout=dropout if num_layers > 1 else 0,
-            batch_first=True,  # input shape: (batch, seq_len, features)
+            batch_first=True,
         )
 
         self.dropout = nn.Dropout(dropout)
@@ -116,15 +100,14 @@ class StockPredictor(nn.Module):
             nn.Linear(hidden_size, 64),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(64, 1),  # single output: predicted % return
+            nn.Linear(64, 1), 
         )
 
     def forward(self, x):
-        # x shape: (batch_size, seq_len, input_size)
         lstm_out, (hidden, _) = self.lstm(x)
 
-        # Take the last hidden state (most recent timestep)
-        last_hidden = hidden[-1]  # (batch_size, hidden_size)
+        # Take the last hidden state bc it knows the previous days
+        last_hidden = hidden[-1] 
         last_hidden = self.dropout(last_hidden)
 
         out = self.output_head(last_hidden)  # (batch_size, 1)
@@ -132,7 +115,7 @@ class StockPredictor(nn.Module):
 
 
 def load_data():
-    print("Loading training data...")
+
     df = pd.read_parquet(DATA_PATH)
     print(f"  Loaded {len(df):,} rows, {df['Ticker'].nunique()} tickers\n")
 
@@ -150,13 +133,15 @@ def load_data():
 
 
 def prepare_data(features: np.ndarray, labels: np.ndarray):
-    """Scale features and split into train/val/test sets."""
+    """
+    Scale features beause all the features are on different scales, so model would take
+    the larger scaled ones to be more important even if they arent
+    Split into train/val/test sets.
+    """
 
     features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
     labels = np.nan_to_num(labels, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # Split BEFORE scaling to prevent data leakage
-    # (scaler should only be fit on training data)
     train_end = int(len(features) * (1 - VAL_SPLIT - TEST_SPLIT))
     val_end = int(len(features) * (1 - TEST_SPLIT))
 
@@ -168,19 +153,12 @@ def prepare_data(features: np.ndarray, labels: np.ndarray):
     val_labels = labels[train_end:val_end]
     test_labels = labels[val_end:]
 
-    # Fit scaler on training data only, then apply to all splits
     scaler = StandardScaler()
-    train_features = scaler.fit_transform(train_features)
-    val_features = scaler.transform(val_features)
-    test_features = scaler.transform(test_features)
+    train_features = scaler.fit_transform(train_features) # find the mean and std
+    val_features = scaler.transform(val_features) # apply found mean and std
+    test_features = scaler.transform(test_features) # apply found mean and std
 
-    # Save scaler — needed later for inference in FastAPI
     np.save(SCALER_PATH, {"mean": scaler.mean_, "scale": scaler.scale_})
-    print(f"  Scaler saved to {SCALER_PATH}")
-
-    print(f"  Train: {len(train_features):,} rows")
-    print(f"  Val:   {len(val_features):,} rows")
-    print(f"  Test:  {len(test_features):,} rows\n")
 
     return (
         train_features,
@@ -194,7 +172,8 @@ def prepare_data(features: np.ndarray, labels: np.ndarray):
 
 
 def train_epoch(model, loader, optimizer, criterion, device):
-    """Run one full pass over the training data."""
+    """Run one epoch the training data, makes the code look cleaner"""
+
     model.train()
     total_loss = 0
 
@@ -207,7 +186,7 @@ def train_epoch(model, loader, optimizer, criterion, device):
         loss = criterion(predictions, y_batch)
         loss.backward()
 
-        # Gradient clipping — prevents exploding gradients in LSTMs
+        # Gradient clipping which prevents exploding gradients in LSTMs
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
         optimizer.step()
@@ -217,7 +196,7 @@ def train_epoch(model, loader, optimizer, criterion, device):
 
 
 def validate(model, loader, criterion, device):
-    """Evaluate model on validation set."""
+    """Run model on validation set"""
     model.eval()
     total_loss = 0
 
@@ -233,13 +212,9 @@ def validate(model, loader, criterion, device):
 
 
 def train():
-    print("=" * 50)
-    print("  Stock Market Predictor — Model Training")
-    print("=" * 50, "\n")
 
-    # Device — use GPU if available, otherwise CPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"  Using device: {device}\n")
+    print(f"Using device: {device}\n")
 
     # Load and prepare data
     features, labels = load_data()
@@ -256,16 +231,13 @@ def train():
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    # Build model
+    # Initialize model
     model = StockPredictor(
         input_size=len(FEATURE_COLS),
         hidden_size=HIDDEN_SIZE,
         num_layers=NUM_LAYERS,
         dropout=DROPOUT,
     ).to(device)
-
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"  Model parameters: {total_params:,}\n")
 
     # Loss, optimizer, and learning rate scheduler
     criterion = nn.MSELoss()
@@ -279,61 +251,58 @@ def train():
     patience = 5  # Stop if val loss doesn't improve for 5 epochs
     patience_count = 0
 
-    print("  Epoch | Train Loss | Val Loss  | Status")
+    print("Epoch | Train Loss | Val Loss")
     print("  " + "-" * 45)
+
+    train_losses = []
+    val_losses   = []
 
     for epoch in range(1, EPOCHS + 1):
         train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
         val_loss = validate(model, val_loader, criterion, device)
         scheduler.step(val_loss)
 
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             patience_count = 0
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state": model.state_dict(),
-                    "val_loss": val_loss,
-                    "config": {
-                        "input_size": len(FEATURE_COLS),
-                        "hidden_size": HIDDEN_SIZE,
-                        "num_layers": NUM_LAYERS,
-                        "dropout": DROPOUT,
-                        "seq_len": SEQUENCE_LEN,
-                        "features": FEATURE_COLS,
-                    },
-                },
-                MODEL_PATH,
-            )
-            status = "✓ saved"
+            torch.save({
+                "epoch":        epoch,
+                "model_state":  model.state_dict(),
+                "val_loss":     val_loss,
+                "train_losses": train_losses, 
+                "val_losses":   val_losses, 
+                "config": {
+                    "input_size":  len(FEATURE_COLS),
+                    "hidden_size": HIDDEN_SIZE,
+                    "num_layers":  NUM_LAYERS,
+                    "dropout":     DROPOUT,
+                    "seq_len":     SEQUENCE_LEN,
+                    "features":    FEATURE_COLS,
+                    "horizon":     PREDICTION_HORIZON 
+                }
+            }, MODEL_PATH)
         else:
             patience_count += 1
-            status = f"no improvement ({patience_count}/{patience})"
 
-        print(f"  {epoch:5d} | {train_loss:.6f}   | {val_loss:.6f}  | {status}")
+        print(f"  {epoch:5d} | {train_loss:.6f}   | {val_loss:.6f}")
 
         # Early stopping
         if patience_count >= patience:
-            print(
-                f"\n  Early stopping at epoch {epoch} — no improvement for {patience} epochs."
-            )
+            print("stopped early due to no more improve for patience amount of epochs")
             break
 
     # Final evaluation on test set
-    print("\n  Loading best model for final evaluation...")
     checkpoint = torch.load(MODEL_PATH, map_location=device)
     model.load_state_dict(checkpoint["model_state"])
     test_loss = validate(model, test_loader, criterion, device)
 
-    print("\n" + "=" * 50)
-    print("  Training Complete!")
-    print("=" * 50)
-    print(f"  Best val loss:  {best_val_loss:.6f}")
-    print(f"  Test loss:      {test_loss:.6f}")
-    print(f"  Model saved to: {MODEL_PATH}")
-    print(f"  Scaler saved to: {SCALER_PATH}")
+    print("Done!")
+    print("Best val loss: ", best_val_loss)
+    print("Test loss: ", test_loss)
 
 
 if __name__ == "__main__":
