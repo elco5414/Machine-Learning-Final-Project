@@ -43,7 +43,7 @@ Also if you are not familiar with virtual environments, you use `deactivate` to 
 python data_pipeline.py
 
 # 2. train the LSTM -> writes models/model.pth and models/scaler.npy
-python train_model.py
+python model.py
 
 # 3. train the XGBoost model -> writes models/price_model.json
 python price_model.py
