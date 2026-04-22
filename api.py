@@ -423,6 +423,7 @@ def predict_price_endpoint(request: PricePredictionRequest):
 
     return payload
 
+
 @app.get("/suggestions")
 def get_suggestions(limit: int = 5):
     """
@@ -434,11 +435,12 @@ def get_suggestions(limit: int = 5):
     for ticker in WATCHLIST:
         pred = predict_return(ticker, action=1)
         if pred is not None:
+            pct = pred["predicted_return_pct"]
             scored.append({
                 "ticker":           ticker,
-                "predicted_return": f"{pred:+.2f}%",
-                "recommendation":   get_recommendation(pred),
-                "pred_value":       pred  # used for sorting, not returned
+                "predicted_return": f"{pct:+.2f}%",
+                "recommendation":   get_recommendation(pct),
+                "pred_value":       pct   # used for sorting, not returned
             })
 
     # Sort by predicted return descending
