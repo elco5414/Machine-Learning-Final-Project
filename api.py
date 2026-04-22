@@ -423,6 +423,38 @@ def predict_price_endpoint(request: PricePredictionRequest):
 
     return payload
 
+@app.get("/suggestions")
+def get_suggestions(limit: int = 5):
+    """
+    Scan the watchlist and return the top performing predicted stocks
+    that could be good buys.
+    """
+    scored = []
+
+    for ticker in WATCHLIST:
+        pred = predict_return(ticker, action=1)
+        if pred is not None:
+            scored.append({
+                "ticker":           ticker,
+                "predicted_return": f"{pred:+.2f}%",
+                "recommendation":   get_recommendation(pred),
+                "pred_value":       pred  # used for sorting, not returned
+            })
+
+    # Sort by predicted return descending
+    scored.sort(key=lambda x: x["pred_value"], reverse=True)
+
+    # Remove internal sorting field before returning
+    suggestions = []
+    for s in scored[:limit]:
+        s.pop("pred_value")
+        suggestions.append(s)
+
+    return {
+        "suggestions": suggestions,
+        "generated":   datetime.now().isoformat()
+    }
+
 
 # Assumes index.html sits next to this file. Served at the root URL.
 # (STATIC_DIR is defined near the top of the file.)
