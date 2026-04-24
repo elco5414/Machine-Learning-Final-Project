@@ -62,5 +62,5 @@ If all these things are not calling to you - it is hosted on hugging face and yo
 - Do not use this for your actual investment advice, this is for academics
 - AI was used for the ideation of these models and the generation of model code
 
-If you want to use `visualize_tree.py`, which shows you the actual tree graphs at 0 and the final one, you need to also 'brew install graphviz`
+If you want to use `visualize_tree.py`, which shows you the actual tree graphs at 0 and the final one, you need to also 'brew install graphviz`, and then it will populate those pngs. But they will be in the repo so you can just look there. 
 ****
