@@ -208,7 +208,7 @@ def combine_all(processed_dir: str) -> pd.DataFrame:
         raise ValueError("No processed files found.")
 
     combined = pd.concat(frames, ignore_index=True)
-    out_path  = os.path.join(OUTPUT_DIR, "training_data.parquet")
+    out_path  = os.path.join(OUTPUT_DIR, "training_data_5.parquet")
     combined.to_parquet(out_path)
     return combined
 

@@ -17,20 +17,20 @@ from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
-PREDICTION_HORIZON = 20
+PREDICTION_HORIZON = 60
 
 DATA_PATH = "data/training_data.parquet"
 MODEL_DIR = "models"
 MODEL_PATH = os.path.join(MODEL_DIR, "model_" + str(PREDICTION_HORIZON) + ".pth")
-SCALER_PATH = os.path.join(MODEL_DIR, "scaler.npy")
+SCALER_PATH = os.path.join(MODEL_DIR, "scaler_" + str(PREDICTION_HORIZON) + ".npy")
 
-SEQUENCE_LEN = 60  # How many past days the model looks at
+SEQUENCE_LEN = 120  # How many past days the model looks at
 BATCH_SIZE = 512  # How many samples per training step
-EPOCHS = 30  
+EPOCHS = 40  
 LEARNING_RATE = 0.001 
-HIDDEN_SIZE = 128  # Size of LSTM hidden layer
+HIDDEN_SIZE = 256  # Size of LSTM hidden layer
 NUM_LAYERS = 2  # Number of stacked LSTM layers
-DROPOUT = 0.2  
+DROPOUT = 0.3  
 VAL_SPLIT = 0.1 
 TEST_SPLIT = 0.1 
 
