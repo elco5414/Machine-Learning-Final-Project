@@ -559,7 +559,7 @@
                 <h2>Portfolio Analyzer</h2>
                 <p class="subhead">
                     Forecasts the expected return of each holding over the next
-                    five trading days.
+                    5, 20, or 60 trading days.
                 </p>
 
                 <div class="input-row">
@@ -580,6 +580,14 @@
                             placeholder="10"
                             min="1"
                         />
+                    </div>
+                    <div>
+                        <label for="port-horizon">Prediction horizon</label>
+                        <select id="port-horizon">
+                            <option value="5">5 days (1 week)</option>
+                            <option value="20">20 days (1 month)</option>
+                            <option value="60">60 days (1 quarter)</option>
+                        </select>
                     </div>
                     <div>
                         <button type="button" class="ghost" id="add-holding">
@@ -677,9 +685,14 @@
             <div class="panel-kicker">Model I · LSTM</div>
             <h2>Market Suggestions</h2>
             <p class="subhead">
-                Top predicted performers from the S&P 500 watchlist over the next 5 trading days.
+                Top predicted performers from the S&P 500 watchlist over the next 5, 20, or 60 trading days.
             </p>
             <div class="button-row">
+                <select id="suggestions-horizon" style="margin-right: 12px;">
+                    <option value="5">5 days (1 week)</option>
+                    <option value="20">20 days (1 month)</option>
+                    <option value="60">60 days (1 quarter)</option>
+                </select>
                 <button type="button" id="suggestions-btn">Scan market</button>
             </div>
             <div id="suggestions-error"></div>
@@ -713,6 +726,7 @@
             const $clear = document.getElementById("clear-btn");
             const $portError = document.getElementById("port-error");
             const $portResults = document.getElementById("port-results");
+            const $portHorizon = document.getElementById("port-horizon");
 
             function renderHoldings() {
                 const entries = Object.entries(holdings);
@@ -787,13 +801,14 @@
 
             $analyze.addEventListener("click", async () => {
                 clearPortError();
+                const horizon = $portHorizon.value;
                 $analyze.innerHTML = `<span class="loading"></span>Analyzing…`;
                 $analyze.disabled = true;
                 try {
                     const res = await fetch(API_BASE + "/portfolio", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ portfolio: holdings }),
+                        body: JSON.stringify({ portfolio: holdings, horizon }),
                     });
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}));
@@ -1015,18 +1030,20 @@
             const $suggestionsBtn  = document.getElementById("suggestions-btn");
             const $suggestionsGrid = document.getElementById("suggestions-grid");
             const $suggestionsError = document.getElementById("suggestions-error");
+            const $suggestionsHorizon = document.getElementById("suggestions-horizon");
 
             $suggestionsBtn.addEventListener("click", async () => {
                 $suggestionsError.innerHTML = "";
+                const horizon = $suggestionsHorizon.value;
                 $suggestionsBtn.innerHTML = `<span class="loading"></span>Scanning…`;
                 $suggestionsBtn.disabled = true;
                 $suggestionsGrid.style.display = "none";
 
                 try {
-                    const res  = await fetch(API_BASE + "/suggestions?limit=6");
+                    const res = await fetch(API_BASE + `/suggestions?limit=6&horizon=${horizon}`);
                     if (!res.ok) throw new Error(`Request failed (${res.status})`);
                     const data = await res.json();
-                    renderSuggestions(data.suggestions);
+                    renderSuggestions(data.suggestions, data.horizon_days);
                     $suggestionsBtn.innerHTML = "Refresh";
                 } catch (e) {
                     $suggestionsError.innerHTML = `<div class="error">${e.message || "Something went wrong."}</div>`;
@@ -1036,7 +1053,7 @@
                 }
             });
 
-            function renderSuggestions(suggestions) {
+            function renderSuggestions(suggestions, horizonDays) {
                 if (!suggestions.length) {
                     $suggestionsGrid.innerHTML = `<div class="empty">No suggestions available.</div>`;
                     $suggestionsGrid.style.display = "block";

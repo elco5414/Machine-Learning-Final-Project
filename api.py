@@ -1,8 +1,9 @@
 """
 Stock Market Prediction api
-Serves predictions from two models:
-  1. LSTM model (5-day return + BUY/SELL/HOLD recommendations)
-  2. XGBoost model (absolute price on a specific future date, up to 90 days)
+Serves predictions from LSTM models with multiple prediction horizons:
+  - 5-day model (1 week ahead)
+  - 20-day model (1 month ahead)  
+  - 60-day model (1 quarter ahead)
 
 Install dependencies:
     pip install fastapi uvicorn yfinance numpy torch pandas xgboost
@@ -13,22 +14,10 @@ Run:
 Then visit http://localhost:8000 in your browser.
 """
 
-# torch and xgboost each ship their own libomp.dylib on Mac.
-# Loading both in one process triggers an OpenMP duplicate-lib
-# abort that crashes the Python interpreter (segfault at
-# __kmp_suspend_initialize_thread). This env var tells OpenMP
-# to tolerate multiple copies. Must be set BEFORE torch/xgboost
-# are imported, hence the placement above all other imports.
 import os
-
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import io
-
-# our XGBoost price model is invoked as a subprocess to avoid the torch +
-# xgboost OpenMP collision that crashes Python on Mac. MAX_HORIZON is still
-# imported from predict.py so the API can validate date ranges without
-# actually loading xgboost into this process.
 import json
 import subprocess
 import sys
@@ -52,130 +41,103 @@ from pydantic import BaseModel
 
 warnings.filterwarnings("ignore")
 
-# Directory containing this file -- used to locate the frontend and the
-# subprocess runner script.
 STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# config
-MODEL_PATH = "models/model.pth"
-SCALER_PATH = "models/scaler.npy"
 
-SEQUENCE_LEN = 30
+MODELS = {
+    "5": {
+        "path": "models/model_5.pth",
+        "scaler": "models/scaler_5.npy",
+        "seq_len": 30,
+        "name": "5-day",
+        "days": 5
+    },
+    "20": {
+        "path": "models/model_20.pth",
+        "scaler": "models/scaler_20.npy", 
+        "seq_len": 60,
+        "name": "20-day",
+        "days": 20
+    },
+    "60": {
+        "path": "models/model_60.pth",
+        "scaler": "models/scaler_60.npy",  
+        "seq_len": 120,
+        "name": "60-day",
+        "days": 60
+    },
+}
 
 FEATURE_COLS = [
-    "return_1d",
-    "return_5d",
-    "return_10d",
-    "return_20d",
-    "volatility_10d",
-    "volatility_20d",
-    "rsi_14",
-    "macd",
-    "macd_signal",
-    "macd_hist",
-    "bb_upper",
-    "bb_mid",
-    "bb_lower",
-    "bb_position",
-    "volume_change",
-    "volume_ratio",
-    "action",
+    "return_1d", "return_5d", "return_10d", "return_20d",
+    "volatility_10d", "volatility_20d",
+    "rsi_14", "macd", "macd_signal", "macd_hist",
+    "bb_upper", "bb_mid", "bb_lower", "bb_position",
+    "volume_change", "volume_ratio", "action",
 ]
 
-# S&P 500 companies
 WATCHLIST = [
-    "AAPL",
-    "MSFT",
-    "GOOGL",
-    "AMZN",
-    "NVDA",
-    "META",
-    "TSLA",
-    "BRK-B",
-    "JPM",
-    "JNJ",
-    "V",
-    "PG",
-    "MA",
-    "HD",
-    "CVX",
-    "MRK",
-    "ABBV",
-    "PEP",
-    "KO",
-    "BAC",
-    "PFE",
-    "AVGO",
-    "COST",
-    "DIS",
-    "CSCO",
-    "TMO",
-    "ACN",
-    "MCD",
-    "NEE",
-    "NKE",
-    "INTC",
-    "QCOM",
-    "UNH",
-    "LIN",
-    "DHR",
-    "TXN",
-    "PM",
-    "AMGN",
-    "RTX",
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+    "BRK-B", "JPM", "JNJ", "V", "PG", "MA", "HD", "CVX",
+    "MRK", "ABBV", "PEP", "KO", "BAC", "PFE", "AVGO", "COST",
+    "DIS", "CSCO", "TMO", "ACN", "MCD", "NEE", "NKE", "INTC",
+    "QCOM", "UNH", "LIN", "DHR", "TXN", "PM", "AMGN", "RTX",
 ]
 
-# lstm model
+
+
 class StockPredictor(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, dropout):
         super().__init__()
         self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
+            input_size=input_size, hidden_size=hidden_size,
             num_layers=num_layers,
             dropout=dropout if num_layers > 1 else 0,
             batch_first=True,
         )
         self.dropout = nn.Dropout(dropout)
         self.output_head = nn.Sequential(
-            nn.Linear(hidden_size, 64),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, 1),
+            nn.Linear(hidden_size, 64), nn.ReLU(),
+            nn.Dropout(dropout), nn.Linear(64, 1),
         )
 
     def forward(self, x):
         _, (hidden, _) = self.lstm(x)
         last_hidden = self.dropout(hidden[-1])
-        out = self.output_head(last_hidden)
-        return out.squeeze(-1)
+        return self.output_head(last_hidden).squeeze(-1)
+
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-checkpoint = torch.load(MODEL_PATH, map_location=device)
-config = checkpoint["config"]
+loaded_models = {}
+loaded_scalers = {}
 
-lstm_model = StockPredictor(
-    input_size=config["input_size"],
-    hidden_size=config["hidden_size"],
-    num_layers=config["num_layers"],
-    dropout=config["dropout"],
-).to(device)
+for horizon, config in MODELS.items():
+    try:
+        checkpoint = torch.load(config["path"], map_location=device)
+        model_config = checkpoint["config"]
 
-# load model
-lstm_model.load_state_dict(checkpoint["model_state"])
-lstm_model.eval()
+        model = StockPredictor(
+            model_config["input_size"], model_config["hidden_size"],
+            model_config["num_layers"], model_config["dropout"]
+        ).to(device)
+        model.load_state_dict(checkpoint["model_state"])
+        model.eval()
+        loaded_models[horizon] = model
 
-scaler_data = np.load(SCALER_PATH, allow_pickle=True).item()
-scaler_mean = scaler_data["mean"]
-scaler_scale = scaler_data["scale"]
+        scaler_data = np.load(config["scaler"], allow_pickle=True).item()
+        loaded_scalers[horizon] = {
+            "mean": scaler_data["mean"],
+            "scale": scaler_data["scale"]
+        }
+    except FileNotFoundError:
+        print(f"✗ {config['name']} model not found at {config['path']}")
 
 
 _cached_tickers: Optional[list[str]] = None
 
 
 def get_sp500_tickers() -> list[str]:
-    """Scrape current S&P 500 tickers from Wikipedia. Cached after first call."""
     global _cached_tickers
     if _cached_tickers is not None:
         return _cached_tickers
@@ -193,13 +155,13 @@ def get_sp500_tickers() -> list[str]:
     return _cached_tickers
 
 
-# helper functions
+
 def fetch_recent_data(ticker: str, days: int = 200) -> Optional[pd.DataFrame]:
     try:
         end = datetime.today()
         start = end - timedelta(days=days)
         df = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
-        if df.empty or len(df) < SEQUENCE_LEN:
+        if df.empty:
             return None
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = [col[0] for col in df.columns]
@@ -236,9 +198,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df["bb_mid"] = bbands[mid_col]
         df["bb_lower"] = bbands[lower_col]
         band_range = df["bb_upper"] - df["bb_lower"]
-        df["bb_position"] = (close - df["bb_lower"]) / band_range.replace(
-            0, float("nan")
-        )
+        df["bb_position"] = (close - df["bb_lower"]) / band_range.replace(0, float("nan"))
 
     df["volume_change"] = volume.pct_change(1)
     df["volume_ratio"] = volume / volume.rolling(5).mean()
@@ -246,86 +206,95 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def scale_features(features: np.ndarray) -> np.ndarray:
-    return (features - scaler_mean) / scaler_scale
+def scale_features(features: np.ndarray, horizon: str) -> np.ndarray:
+    scaler = loaded_scalers[horizon]
+    return (features - scaler["mean"]) / scaler["scale"]
 
 
-def predict_return(ticker: str, action: int = 0) -> Optional[dict]:
-    """Predict 5-day return + fetch latest close for portfolio impact math."""
-    df = fetch_recent_data(ticker)
-    if df is None:
+def predict_return(ticker: str, horizon: str = "5", action: int = 0) -> Optional[dict]:
+    """Predict return using specified model horizon."""
+    if horizon not in loaded_models:
+        return None
+
+    config = MODELS[horizon]
+    model = loaded_models[horizon]
+    seq_len = config["seq_len"]
+
+    df = fetch_recent_data(ticker, days=300)  # fetch more for longer sequences
+    if df is None or len(df) < seq_len:
         return None
 
     current_price = float(df["Close"].iloc[-1])
 
     df = engineer_features(df)
     df = df.dropna(subset=FEATURE_COLS)
-    if len(df) < SEQUENCE_LEN:
+    if len(df) < seq_len:
         return None
 
-    features = df[FEATURE_COLS].values[-SEQUENCE_LEN:].astype(np.float32)
+    features = df[FEATURE_COLS].values[-seq_len:].astype(np.float32)
     features[:, -1] = action
     features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
-    features = scale_features(features)
+    features = scale_features(features, horizon)
 
     x = torch.tensor(features, dtype=torch.float32).unsqueeze(0).to(device)
     with torch.no_grad():
-        pred = lstm_model(x).item()
+        pred = model(x).item()
 
     return {
         "current_price": current_price,
         "predicted_return_pct": round(pred * 100, 2),
+        "horizon_days": config["days"]
     }
 
 
 def get_recommendation(predicted_return: float) -> str:
-    if predicted_return > 3:
-        return "Strong Buy"
-    elif predicted_return > 1:
-        return "Buy"
-    elif predicted_return > -1:
-        return "Hold"
-    elif predicted_return > -3:
-        return "Sell"
-    else:
-        return "Strong Sell"
+    if predicted_return > 3:   return "Strong Buy"
+    elif predicted_return > 1: return "Buy"
+    elif predicted_return > -1: return "Hold"
+    elif predicted_return > -3: return "Sell"
+    else:                       return "Strong Sell"
 
 
 app = FastAPI(
     title="Stock Market Predictor API",
-    description="LSTM + XGBoost predictions on S&P 500 stocks",
+    description="LSTM predictions on S&P 500 stocks with 5/20/60-day horizons",
     version="2.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # single-origin deployment, safe to open up
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+
 class PortfolioRequest(BaseModel):
-    portfolio: dict[str, int]  # { "AAPL": 10, "TSLA": 5 }
+    portfolio: dict[str, int]
+    horizon: Optional[str] = "5"  # 5, 20, or 60
 
 
 class PricePredictionRequest(BaseModel):
     ticker: str
-    target_date: str  # "YYYY-MM-DD"
+    target_date: str
+
 
 
 @app.get("/tickers")
 def tickers():
-    """Return the full S&P 500 ticker list for the frontend dropdown."""
     return {"tickers": get_sp500_tickers()}
 
 
 @app.post("/portfolio")
 def analyze_portfolio(request: PortfolioRequest):
-    """Analyze each stock in the portfolio + compute total value and impact."""
     if not request.portfolio:
         raise HTTPException(status_code=400, detail="Portfolio cannot be empty")
+
+    horizon = request.horizon or "5"
+    if horizon not in loaded_models:
+        raise HTTPException(status_code=400, detail=f"Model for {horizon}-day horizon not available")
 
     results = {}
     total_value = 0.0
@@ -334,7 +303,7 @@ def analyze_portfolio(request: PortfolioRequest):
 
     for ticker, shares in request.portfolio.items():
         ticker = ticker.upper()
-        pred = predict_return(ticker, action=1)
+        pred = predict_return(ticker, horizon=horizon, action=1)
 
         if pred is None:
             results[ticker] = {
@@ -363,7 +332,6 @@ def analyze_portfolio(request: PortfolioRequest):
         successful_value += position_value
         weighted_return_sum += pred["predicted_return_pct"] * position_value
 
-    # weighted average return across successfully-priced holdings
     portfolio_return = (
         round(weighted_return_sum / successful_value, 2)
         if successful_value > 0
@@ -381,7 +349,7 @@ def analyze_portfolio(request: PortfolioRequest):
             "total_value": round(total_value, 2),
             "weighted_return_pct": portfolio_return,
             "projected_dollar_change": projected_change,
-            "horizon_days": 5,
+            "horizon_days": MODELS[horizon]["days"],
         },
         "analyzed": datetime.now().isoformat(),
     }
@@ -389,28 +357,18 @@ def analyze_portfolio(request: PortfolioRequest):
 
 @app.post("/predict-price")
 def predict_price_endpoint(request: PricePredictionRequest):
-    """Predict exact closing price on a specific future date (up to 90 trading days).
-
-    Runs the XGBoost model in a fresh subprocess. This isolates xgboost's
-    OpenMP runtime from torch's, which otherwise collide and segfault the
-    Python interpreter on Mac.
-    """
     runner_path = os.path.join(STATIC_DIR, "predict_runner.py")
     try:
         completed = subprocess.run(
             [sys.executable, runner_path, request.ticker, request.target_date],
-            capture_output=True,
-            text=True,
-            timeout=60,
+            capture_output=True, text=True, timeout=60,
         )
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Prediction timed out")
 
-    # predict_runner.py always prints JSON to stdout, even on error
     try:
         payload = json.loads(completed.stdout.strip().splitlines()[-1])
     except (json.JSONDecodeError, IndexError):
-        # something went badly wrong -- surface stderr so we can debug
         raise HTTPException(
             status_code=500,
             detail=f"Prediction subprocess failed: {completed.stderr or 'no output'}",
@@ -425,41 +383,31 @@ def predict_price_endpoint(request: PricePredictionRequest):
 
 
 @app.get("/suggestions")
-def get_suggestions(limit: int = 5):
-    """
-    Scan the watchlist and return the top performing predicted stocks
-    that could be good buys.
-    """
-    scored = []
+def get_suggestions(limit: int = 6, horizon: str = "5"):
+    """Scan the watchlist and return top performers for selected horizon."""
+    if horizon not in loaded_models:
+        raise HTTPException(status_code=400, detail=f"Model for {horizon}-day horizon not available")
 
+    scored = []
     for ticker in WATCHLIST:
-        pred = predict_return(ticker, action=1)
+        pred = predict_return(ticker, horizon=horizon, action=1)
         if pred is not None:
             pct = pred["predicted_return_pct"]
             scored.append({
-                "ticker":           ticker,
+                "ticker": ticker,
                 "predicted_return": f"{pct:+.2f}%",
-                "recommendation":   get_recommendation(pct),
-                "pred_value":       pct   # used for sorting, not returned
+                "recommendation": get_recommendation(pct),
+                "pred_value": pct
             })
 
-    # Sort by predicted return descending
     scored.sort(key=lambda x: x["pred_value"], reverse=True)
-
-    # Remove internal sorting field before returning
-    suggestions = []
-    for s in scored[:limit]:
-        s.pop("pred_value")
-        suggestions.append(s)
+    for s in scored: s.pop("pred_value")
 
     return {
-        "suggestions": suggestions,
-        "generated":   datetime.now().isoformat()
+        "suggestions": scored[:limit],
+        "horizon_days": MODELS[horizon]["days"],
+        "generated": datetime.now().isoformat()
     }
-
-
-# Assumes index.html sits next to this file. Served at the root URL.
-# (STATIC_DIR is defined near the top of the file.)
 
 
 @app.get("/")

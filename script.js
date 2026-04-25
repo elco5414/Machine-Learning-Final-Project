@@ -1,26 +1,22 @@
-const API_BASE = ""; // same origin — frontend served from FastAPI
+const API_BASE = "";
 
 // --- header date ---
 const now = new Date();
 document.getElementById("date-line").textContent = now.toLocaleDateString(
   "en-US",
-  {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  },
+  { weekday: "short", month: "short", day: "numeric", year: "numeric" },
 );
 
 // ===================================================
 //   PORTFOLIO ANALYZER
 // ===================================================
-const holdings = {}; // { TICKER: shares }
+const holdings = {};
 const $holdings = document.getElementById("holdings");
 const $analyze = document.getElementById("analyze-btn");
 const $clear = document.getElementById("clear-btn");
 const $portError = document.getElementById("port-error");
 const $portResults = document.getElementById("port-results");
+const $portHorizon = document.getElementById("port-horizon");
 
 function renderHoldings() {
   const entries = Object.entries(holdings);
@@ -31,16 +27,13 @@ function renderHoldings() {
     return;
   }
   $holdings.innerHTML = entries
-    .map(
-      ([t, s]) => `
-  <div class="holding-row">
-    <div class="ticker">${t}</div>
-    <div class="shares">${s} ${s === 1 ? "share" : "shares"}</div>
-    <button class="remove-btn" data-ticker="${t}" title="Remove">×</button>
-  </div>
-`,
-    )
-    .join("");
+    .map(([t, s]) => `
+      <div class="holding-row">
+        <div class="ticker">${t}</div>
+        <div class="shares">${s} ${s === 1 ? "share" : "shares"}</div>
+        <button class="remove-btn" data-ticker="${t}" title="Remove">×</button>
+      </div>
+    `).join("");
   $analyze.disabled = false;
   $clear.disabled = false;
   $holdings.querySelectorAll(".remove-btn").forEach((btn) => {
@@ -88,13 +81,14 @@ $clear.addEventListener("click", () => {
 
 $analyze.addEventListener("click", async () => {
   clearPortError();
+  const horizon = $portHorizon.value;
   $analyze.innerHTML = `<span class="loading"></span>Analyzing…`;
   $analyze.disabled = true;
   try {
     const res = await fetch(API_BASE + "/portfolio", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ portfolio: holdings }),
+      body: JSON.stringify({ portfolio: holdings, horizon }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -111,62 +105,52 @@ $analyze.addEventListener("click", async () => {
 
 function renderPortfolioResults(data) {
   const { portfolio, summary } = data;
-
-  // summary
   const summaryHtml = `
-<div class="summary-row">
-  <div class="summary-cell">
-    <div class="k">Total value</div>
-    <div class="v">$${fmt(summary.total_value)}</div>
-  </div>
-  <div class="summary-cell">
-    <div class="k">Weighted return</div>
-    <div class="v ${signClass(summary.weighted_return_pct)}">
-      ${fmtPct(summary.weighted_return_pct)}
-    </div>
-  </div>
-  <div class="summary-cell">
-    <div class="k">Projected change</div>
-    <div class="v mono ${signClass(summary.projected_dollar_change)}">
-      ${fmtSignedDollars(summary.projected_dollar_change)}
-    </div>
-  </div>
-</div>
-`;
-  document.getElementById("summary-card").innerHTML = summaryHtml;
-
-  // per-stock
-  const rows = Object.entries(portfolio)
-    .map(([ticker, p]) => {
-      if (
-        p.predicted_return_pct === null ||
-        p.predicted_return_pct === undefined
-      ) {
-        return `
-    <div class="result-row">
-      <div class="ticker">${ticker}</div>
-      <div class="num" style="color:var(--ink-fade);">${p.shares} sh</div>
-      <div class="num" style="color:var(--ink-fade);">—</div>
-      <div class="pct" style="color:var(--ink-fade);">—</div>
-      <div class="rec" style="color:var(--ink-fade);">no data</div>
+    <div class="summary-row">
+      <div class="summary-cell">
+        <div class="k">Total value</div>
+        <div class="v">$${fmt(summary.total_value)}</div>
+      </div>
+      <div class="summary-cell">
+        <div class="k">Weighted return (${summary.horizon_days}d)</div>
+        <div class="v ${signClass(summary.weighted_return_pct)}">
+          ${fmtPct(summary.weighted_return_pct)}
+        </div>
+      </div>
+      <div class="summary-cell">
+        <div class="k">Projected change</div>
+        <div class="v mono ${signClass(summary.projected_dollar_change)}">
+          ${fmtSignedDollars(summary.projected_dollar_change)}
+        </div>
+      </div>
     </div>
   `;
-      }
+  document.getElementById("summary-card").innerHTML = summaryHtml;
+
+  const rows = Object.entries(portfolio).map(([ticker, p]) => {
+    if (p.predicted_return_pct === null || p.predicted_return_pct === undefined) {
       return `
-  <div class="result-row">
-    <div class="ticker">${ticker}</div>
-    <div class="num">${p.shares} sh</div>
-    <div class="num">$${fmt(p.position_value)}</div>
-    <div class="pct ${signClass(p.predicted_return_pct)}">
-      ${fmtPct(p.predicted_return_pct)}
-    </div>
-    <div class="rec ${signClass(p.predicted_return_pct)}">
-      ${p.recommendation}
-    </div>
-  </div>
-`;
-    })
-    .join("");
+        <div class="result-row">
+          <div class="ticker">${ticker}</div>
+          <div class="num" style="color:var(--ink-fade);">${p.shares} sh</div>
+          <div class="num" style="color:var(--ink-fade);">—</div>
+          <div class="pct" style="color:var(--ink-fade);">—</div>
+          <div class="rec" style="color:var(--ink-fade);">no data</div>
+        </div>`;
+    }
+    return `
+      <div class="result-row">
+        <div class="ticker">${ticker}</div>
+        <div class="num">${p.shares} sh</div>
+        <div class="num">$${fmt(p.position_value)}</div>
+        <div class="pct ${signClass(p.predicted_return_pct)}">
+          ${fmtPct(p.predicted_return_pct)}
+        </div>
+        <div class="rec ${signClass(p.predicted_return_pct)}">
+          ${p.recommendation}
+        </div>
+      </div>`;
+  }).join("");
   document.getElementById("result-rows").innerHTML = rows;
   $portResults.style.display = "block";
 }
@@ -187,21 +171,18 @@ const $fcBtn = document.getElementById("forecast-btn");
 const $fcError = document.getElementById("fc-error");
 const $fcCard = document.getElementById("forecast-card");
 
-// date input bounds: tomorrow to ~126 calendar days out (≈ 90 trading days)
+// date input bounds
 const tomorrow = new Date();
 tomorrow.setDate(tomorrow.getDate() + 1);
 const maxDate = new Date();
 maxDate.setDate(maxDate.getDate() + 126);
 $fcDate.min = tomorrow.toISOString().slice(0, 10);
 $fcDate.max = maxDate.toISOString().slice(0, 10);
-// default: 30 days out
 const defaultDate = new Date();
 defaultDate.setDate(defaultDate.getDate() + 30);
 $fcDate.value = defaultDate.toISOString().slice(0, 10);
 
-// Shared set of valid S&P 500 tickers -- used by BOTH the forecaster
-// dropdown AND the portfolio Add button for validation. Populated once
-// at page load from /tickers.
+// Shared set of valid S&P 500 tickers
 const validTickers = new Set();
 let tickersLoaded = false;
 
@@ -251,18 +232,13 @@ $fcBtn.addEventListener("click", async () => {
 
 function renderForecast(d) {
   document.getElementById("fc-current").innerHTML = splitPrice(d.current_price);
-  document.getElementById("fc-projected").innerHTML = splitPrice(
-    d.predicted_price,
-  );
-
+  document.getElementById("fc-projected").innerHTML = splitPrice(d.predicted_price);
   const chgEl = document.getElementById("fc-change");
   chgEl.textContent = fmtPct(d.predicted_return_pct);
   chgEl.className = "v " + signClass(d.predicted_return_pct);
-
   document.getElementById("fc-horizon").textContent =
     `${d.days_ahead} trading day${d.days_ahead === 1 ? "" : "s"}`;
   document.getElementById("fc-asof").textContent = d.as_of;
-
   $fcCard.classList.add("visible");
 }
 
@@ -274,13 +250,67 @@ function clearFcError() {
 }
 
 // ===================================================
+//   MARKET SUGGESTIONS
+// ===================================================
+const $suggestionsBtn    = document.getElementById("suggestions-btn");
+const $suggestionsGrid   = document.getElementById("suggestions-grid");
+const $suggestionsError  = document.getElementById("suggestions-error");
+const $suggestionsHorizon = document.getElementById("suggestions-horizon");
+
+if ($suggestionsBtn) {
+  $suggestionsBtn.addEventListener("click", async () => {
+    $suggestionsError.innerHTML = "";
+    const horizon = $suggestionsHorizon.value;
+    $suggestionsBtn.innerHTML = `<span class="loading"></span>Scanning…`;
+    $suggestionsBtn.disabled = true;
+    $suggestionsGrid.style.display = "none";
+
+    try {
+      const res = await fetch(API_BASE + `/suggestions?limit=6&horizon=${horizon}`);
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const data = await res.json();
+      renderSuggestions(data.suggestions, data.horizon_days);
+      $suggestionsBtn.innerHTML = "Refresh";
+    } catch (e) {
+      $suggestionsError.innerHTML = `<div class="error">${e.message || "Something went wrong."}</div>`;
+      $suggestionsBtn.innerHTML = "Scan market";
+    } finally {
+      $suggestionsBtn.disabled = false;
+    }
+  });
+}
+
+function renderSuggestions(suggestions, horizonDays) {
+  if (!suggestions.length) {
+    $suggestionsGrid.innerHTML = `<div class="empty">No suggestions available.</div>`;
+    $suggestionsGrid.style.display = "block";
+    return;
+  }
+  $suggestionsGrid.innerHTML = `
+    <div style="grid-column: 1 / -1; margin-bottom: 8px; font-size: 12px; color: var(--ink-fade);">
+      Predictions for ${horizonDays}-day horizon
+    </div>
+  ` + suggestions.map(s => `
+    <div class="suggestion-card">
+      <div class="s-ticker">${s.ticker}</div>
+      <div class="s-return ${signClass(parseFloat(s.predicted_return))}">
+        ${s.predicted_return}
+      </div>
+      <div class="s-rec ${signClass(parseFloat(s.predicted_return))}">
+        ${s.recommendation}
+      </div>
+    </div>
+  `).join("");
+  $suggestionsGrid.style.display = "grid";
+}
+
+// ===================================================
 //   FORMATTING HELPERS
 // ===================================================
 function fmt(n) {
   if (n === null || n === undefined) return "—";
   return Number(n).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
   });
 }
 function fmtPct(n) {
